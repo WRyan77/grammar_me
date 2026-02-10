@@ -49,6 +49,52 @@
       color: #4CAF50;
       margin-right: 8px;
     }
+
+    #grammar-analysis {
+      border-top: 2px solid #ddd;
+      padding-top: 15px;
+    }
+
+    #grammar-analysis h4 {
+      margin-top: 0;
+      margin-bottom: 10px;
+      color: #333;
+    }
+
+    .vector-legend {
+      background-color: #e3f2fd;
+      padding: 8px 12px;
+      border-radius: 3px;
+      font-size: 13px;
+      color: #1565c0;
+      margin-bottom: 15px;
+      font-family: monospace;
+    }
+
+    .vector-item {
+      margin-bottom: 8px;
+      padding: 6px 10px;
+      background-color: white;
+      border-left: 3px solid #2196F3;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 14px;
+    }
+
+    .vector-item .token {
+      color: #d32f2f;
+      font-weight: bold;
+    }
+
+    .vector-item .arrow {
+      color: #757575;
+      margin: 0 8px;
+    }
+
+    .vector-item .vector {
+      color: #1976d2;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -58,13 +104,277 @@
   <div id="results" style="margin-top: 20px; display: none;">
     <h3>Analysis Results</h3>
     <div id="output"></div>
+
+    <div id="grammar-analysis" style="margin-top: 20px;">
+      <h4>Grammar Feature Vectors</h4>
+      <div class="vector-legend">
+        Format: [wordClass, tense, capitalization, suffix, punctuation, length]
+      </div>
+      <div id="vector-output"></div>
+    </div>
   </div>
 
   <script>
+    /**
+     * Convert input text into numeric feature vectors for grammar analysis
+     * Each token is represented as: [wordClass, tenseNumber, capitalization, suffixType, punctuation, lengthBucket]
+     *
+     * @param {string} text - The input text from the text editor
+     * @returns {Array<{token: string, vector: Array<number>}>} Array of objects with tokens and their numeric vectors
+     */
+    function textToNumbers(text) {
+      // Enhanced word class dictionary using Map for O(1) lookup
+      const wordClassMap = new Map([
+        // Pronouns (1)
+        ['she', 1], ['he', 1], ['i', 1], ['we', 1], ['they', 1], ['you', 1], ['it', 1],
+        ['them', 1], ['us', 1], ['me', 1], ['him', 1], ['her', 1], ['this', 1], ['that', 1],
+        ['these', 1], ['those', 1], ['who', 1], ['whom', 1], ['whose', 1], ['which', 1],
+
+        // Verbs (2)
+        ['eat', 2], ['eats', 2], ['ate', 2], ['eaten', 2], ['eating', 2],
+        ['run', 2], ['runs', 2], ['ran', 2], ['running', 2],
+        ['walk', 2], ['walks', 2], ['walked', 2], ['walking', 2],
+        ['talk', 2], ['talks', 2], ['talked', 2], ['talking', 2],
+        ['think', 2], ['thinks', 2], ['thought', 2], ['thinking', 2],
+        ['know', 2], ['knows', 2], ['knew', 2], ['known', 2], ['knowing', 2],
+        ['see', 2], ['sees', 2], ['saw', 2], ['seen', 2], ['seeing', 2],
+        ['look', 2], ['looks', 2], ['looked', 2], ['looking', 2],
+        ['make', 2], ['makes', 2], ['made', 2], ['making', 2],
+        ['take', 2], ['takes', 2], ['took', 2], ['taken', 2], ['taking', 2],
+        ['get', 2], ['gets', 2], ['got', 2], ['gotten', 2], ['getting', 2],
+        ['give', 2], ['gives', 2], ['gave', 2], ['given', 2], ['giving', 2],
+        ['find', 2], ['finds', 2], ['found', 2], ['finding', 2],
+        ['tell', 2], ['tells', 2], ['told', 2], ['telling', 2],
+        ['ask', 2], ['asks', 2], ['asked', 2], ['asking', 2],
+        ['work', 2], ['works', 2], ['worked', 2], ['working', 2],
+        ['call', 2], ['calls', 2], ['called', 2], ['calling', 2],
+        ['try', 2], ['tries', 2], ['tried', 2], ['trying', 2],
+        ['need', 2], ['needs', 2], ['needed', 2], ['needing', 2],
+        ['feel', 2], ['feels', 2], ['felt', 2], ['feeling', 2],
+        ['become', 2], ['becomes', 2], ['became', 2], ['becoming', 2],
+        ['leave', 2], ['leaves', 2], ['left', 2], ['leaving', 2],
+        ['put', 2], ['puts', 2], ['putting', 2],
+        ['mean', 2], ['means', 2], ['meant', 2], ['meaning', 2],
+        ['keep', 2], ['keeps', 2], ['kept', 2], ['keeping', 2],
+        ['let', 2], ['lets', 2], ['letting', 2],
+        ['begin', 2], ['begins', 2], ['began', 2], ['begun', 2], ['beginning', 2],
+        ['seem', 2], ['seems', 2], ['seemed', 2], ['seeming', 2],
+        ['help', 2], ['helps', 2], ['helped', 2], ['helping', 2],
+        ['show', 2], ['shows', 2], ['showed', 2], ['shown', 2], ['showing', 2],
+        ['hear', 2], ['hears', 2], ['heard', 2], ['hearing', 2],
+        ['play', 2], ['plays', 2], ['played', 2], ['playing', 2],
+        ['move', 2], ['moves', 2], ['moved', 2], ['moving', 2],
+        ['live', 2], ['lives', 2], ['lived', 2], ['living', 2],
+        ['believe', 2], ['believes', 2], ['believed', 2], ['believing', 2],
+        ['bring', 2], ['brings', 2], ['brought', 2], ['bringing', 2],
+        ['happen', 2], ['happens', 2], ['happened', 2], ['happening', 2],
+        ['write', 2], ['writes', 2], ['wrote', 2], ['written', 2], ['writing', 2],
+        ['sit', 2], ['sits', 2], ['sat', 2], ['sitting', 2],
+        ['stand', 2], ['stands', 2], ['stood', 2], ['standing', 2],
+        ['lose', 2], ['loses', 2], ['lost', 2], ['losing', 2],
+        ['pay', 2], ['pays', 2], ['paid', 2], ['paying', 2],
+        ['meet', 2], ['meets', 2], ['met', 2], ['meeting', 2],
+        ['include', 2], ['includes', 2], ['included', 2], ['including', 2],
+        ['continue', 2], ['continues', 2], ['continued', 2], ['continuing', 2],
+        ['set', 2], ['sets', 2], ['setting', 2],
+        ['learn', 2], ['learns', 2], ['learned', 2], ['learning', 2],
+        ['change', 2], ['changes', 2], ['changed', 2], ['changing', 2],
+        ['lead', 2], ['leads', 2], ['led', 2], ['leading', 2],
+        ['understand', 2], ['understands', 2], ['understood', 2], ['understanding', 2],
+        ['watch', 2], ['watches', 2], ['watched', 2], ['watching', 2],
+        ['follow', 2], ['follows', 2], ['followed', 2], ['following', 2],
+        ['stop', 2], ['stops', 2], ['stopped', 2], ['stopping', 2],
+        ['create', 2], ['creates', 2], ['created', 2], ['creating', 2],
+        ['speak', 2], ['speaks', 2], ['spoke', 2], ['spoken', 2], ['speaking', 2],
+        ['is', 2], ['am', 2], ['are', 2], ['was', 2], ['were', 2], ['be', 2], ['been', 2], ['being', 2],
+        ['have', 2], ['has', 2], ['had', 2], ['having', 2],
+        ['do', 2], ['does', 2], ['did', 2], ['done', 2], ['doing', 2],
+        ['will', 2], ['would', 2], ['could', 2], ['should', 2], ['can', 2], ['may', 2], ['might', 2], ['must', 2],
+        ['go', 2], ['goes', 2], ['went', 2], ['gone', 2], ['going', 2],
+        ['come', 2], ['comes', 2], ['came', 2], ['coming', 2],
+        ['want', 2], ['wants', 2], ['wanted', 2], ['wanting', 2],
+        ['use', 2], ['uses', 2], ['used', 2], ['using', 2],
+        ['say', 2], ['says', 2], ['said', 2], ['saying', 2],
+
+        // Nouns (0)
+        ['apple', 0], ['apples', 0], ['dog', 0], ['dogs', 0], ['cat', 0], ['cats', 0],
+        ['house', 0], ['houses', 0], ['car', 0], ['cars', 0], ['book', 0], ['books', 0],
+        ['person', 0], ['people', 0], ['day', 0], ['days', 0], ['time', 0], ['times', 0],
+        ['year', 0], ['years', 0], ['thing', 0], ['things', 0], ['way', 0], ['ways', 0],
+        ['man', 0], ['men', 0], ['woman', 0], ['women', 0], ['world', 0], ['life', 0],
+        ['hand', 0], ['hands', 0], ['part', 0], ['parts', 0], ['child', 0], ['children', 0],
+        ['eye', 0], ['eyes', 0], ['place', 0], ['places', 0], ['week', 0], ['weeks', 0],
+        ['case', 0], ['cases', 0], ['point', 0], ['points', 0], ['government', 0],
+        ['company', 0], ['companies', 0], ['number', 0], ['numbers', 0],
+        ['group', 0], ['groups', 0], ['problem', 0], ['problems', 0], ['fact', 0], ['facts', 0],
+        ['water', 0], ['food', 0], ['money', 0], ['name', 0], ['names', 0],
+
+        // Adverbs (3)
+        ['quickly', 3], ['slowly', 3], ['really', 3], ['very', 3], ['just', 3],
+        ['now', 3], ['also', 3], ['only', 3], ['well', 3], ['even', 3],
+        ['back', 3], ['still', 3], ['already', 3], ['never', 3], ['always', 3],
+        ['often', 3], ['sometimes', 3], ['then', 3], ['here', 3], ['there', 3],
+        ['today', 3], ['together', 3], ['again', 3], ['however', 3], ['almost', 3],
+
+        // Adjectives (4)
+        ['happy', 4], ['sad', 4], ['good', 4], ['bad', 4], ['big', 4], ['small', 4],
+        ['new', 4], ['old', 4], ['high', 4], ['long', 4], ['great', 4], ['little', 4],
+        ['own', 4], ['other', 4], ['right', 4], ['different', 4], ['large', 4],
+        ['important', 4], ['young', 4], ['few', 4], ['public', 4], ['same', 4],
+        ['able', 4], ['early', 4], ['possible', 4], ['best', 4], ['better', 4],
+        ['true', 4], ['free', 4], ['sure', 4], ['clear', 4], ['real', 4],
+
+        // Articles (5)
+        ['the', 5], ['a', 5], ['an', 5],
+
+        // Prepositions (7)
+        ['in', 7], ['on', 7], ['at', 7], ['to', 7], ['for', 7], ['with', 7],
+        ['from', 7], ['by', 7], ['about', 7], ['as', 7], ['into', 7], ['like', 7],
+        ['through', 7], ['after', 7], ['over', 7], ['between', 7], ['under', 7],
+        ['during', 7], ['before', 7], ['up', 7], ['down', 7], ['out', 7], ['off', 7],
+        ['of', 7], ['against', 7], ['within', 7], ['without', 7],
+
+        // Conjunctions (8)
+        ['and', 8], ['but', 8], ['or', 8], ['because', 8], ['if', 8],
+        ['when', 8], ['while', 8], ['although', 8], ['since', 8], ['so', 8],
+        ['unless', 8], ['until', 8], ['whether', 8], ['nor', 8], ['yet', 8]
+      ]);
+
+      // Comprehensive suffix lists (ordered by length for accurate matching)
+      const suffixes = [
+        { suffix: 'tion', type: 9 },
+        { suffix: 'ment', type: 9 },
+        { suffix: 'ness', type: 9 },
+        { suffix: 'able', type: 10 },
+        { suffix: 'ible', type: 10 },
+        { suffix: 'ful', type: 10 },
+        { suffix: 'less', type: 10 },
+        { suffix: 'ous', type: 10 },
+        { suffix: 'ive', type: 10 },
+        { suffix: 'ity', type: 9 },
+        { suffix: 'ing', type: 1 },
+        { suffix: 'ed', type: 2 },
+        { suffix: 'en', type: 3 },
+        { suffix: 'ly', type: 4 },
+        { suffix: 'er', type: 5 },
+        { suffix: 'or', type: 6 },
+        { suffix: 'ist', type: 7 },
+        { suffix: 'ism', type: 8 },
+        { suffix: 'al', type: 11 },
+        { suffix: 'ic', type: 12 },
+        { suffix: 'es', type: 13 },
+        { suffix: 's', type: 14 }
+      ];
+
+      // Punctuation map
+      const punctuationMap = new Map([
+        ['.', 1], ['!', 2], ['?', 3], [',', 4], [';', 5], [':', 6],
+        ['"', 7], ["'", 8], ['`', 9], ['(', 10], [')', 11],
+        ['[', 12], [']', 13], ['{', 14], ['}', 15], ['-', 16]
+      ]);
+
+      // Helper: Get suffix type
+      function getSuffixType(word) {
+        const lower = word.toLowerCase();
+        for (const { suffix, type } of suffixes) {
+          if (lower.endsWith(suffix) && lower.length > suffix.length) {
+            return type;
+          }
+        }
+        return 0;
+      }
+
+      // Helper: Get punctuation code
+      function getPunctuation(token) {
+        return punctuationMap.get(token) || 0;
+      }
+
+      // Helper: Get word class
+      function getWordClass(word) {
+        const lower = word.toLowerCase();
+
+        // Check dictionary first
+        if (wordClassMap.has(lower)) {
+          return wordClassMap.get(lower);
+        }
+
+        // Guess based on suffix heuristics
+        if (lower.endsWith('ly') && lower.length > 2) return 3; // adverb
+        if (lower.endsWith('ing') || lower.endsWith('ed') || lower.endsWith('en')) return 2; // verb
+        if (lower.endsWith('tion') || lower.endsWith('ment') || lower.endsWith('ness') || lower.endsWith('ity')) return 0; // noun
+        if (lower.endsWith('ful') || lower.endsWith('less') || lower.endsWith('ous') || lower.endsWith('ive') || lower.endsWith('able')) return 4; // adjective
+
+        // Check if it's likely a proper noun (capitalized and not at sentence start would be better, but this is MVP)
+        if (word[0] === word[0].toUpperCase() && word.length > 1 && word !== word.toUpperCase()) return 0; // proper noun
+
+        return 6; // unknown/other
+      }
+
+      // Helper: Detect tense/number
+      function getTenseNumber(word, wordClass) {
+        const lower = word.toLowerCase();
+
+        // For verbs
+        if (wordClass === 2) {
+          if (lower.endsWith('ing')) return 3; // present participle
+          if (lower.endsWith('ed')) return 2; // past tense
+          if (lower.endsWith('en')) return 3; // past participle
+          if (lower.endsWith('s') || lower.endsWith('es')) return 1; // 3rd person singular
+          return 0; // base form
+        }
+
+        // For nouns
+        if (wordClass === 0) {
+          if (lower.endsWith('s') || lower.endsWith('es')) return 1; // plural
+          return 0; // singular
+        }
+
+        return 0; // default
+      }
+
+      // Helper: Detect capitalization
+      function getCapitalization(word) {
+        if (!word.match(/[A-Za-z]/)) return 0; // no letters
+        if (word === word.toUpperCase() && word.match(/[A-Z]{2,}/)) return 2; // all caps (multiple letters)
+        if (word[0] === word[0].toUpperCase()) return 1; // first letter capital
+        return 0; // lowercase
+      }
+
+      // Helper: Bucket word length
+      function getLengthBucket(word) {
+        const len = word.length;
+        if (len <= 3) return 1;
+        if (len <= 6) return 2;
+        if (len <= 9) return 3;
+        return 4;
+      }
+
+      // Enhanced tokenization: handles contractions and possessives
+      const tokens = text.match(/\b\w+(?:'\w+)?\b|[.,!?;:"'`()\[\]{}\-]/g) || [];
+
+      // Convert each token into numeric vector with metadata
+      const results = tokens.map(token => {
+        const wordClass = getWordClass(token);
+        const tenseNumber = getTenseNumber(token, wordClass);
+        const capitalization = getCapitalization(token);
+        const suffixType = getSuffixType(token);
+        const punctuation = getPunctuation(token);
+        const lengthBucket = getLengthBucket(token);
+
+        return {
+          token: token,
+          vector: [wordClass, tenseNumber, capitalization, suffixType, punctuation, lengthBucket]
+        };
+      });
+
+      return results;
+    }
+
     const editor = document.getElementById("editor");
     const analyzeBtn = document.getElementById("analyzeBtn");
     const resultsDiv = document.getElementById("results");
     const outputDiv = document.getElementById("output");
+    const vectorOutputDiv = document.getElementById("vector-output");
 
     analyzeBtn.addEventListener("click", () => {
       const text = editor.value;
@@ -86,6 +396,7 @@
 
       // Clear previous output
       outputDiv.innerHTML = "";
+      vectorOutputDiv.innerHTML = "";
 
       // Display each sentence in the output div
       if (sentences.length === 0) {
@@ -99,12 +410,36 @@
         });
       }
 
+      // Grammar analysis: Generate feature vectors
+      if (text.trim()) {
+        const vectorResults = textToNumbers(text);
+
+        if (vectorResults.length === 0) {
+          vectorOutputDiv.innerHTML = "<p>No tokens found.</p>";
+        } else {
+          vectorResults.forEach(({ token, vector }) => {
+            const vectorElement = document.createElement("div");
+            vectorElement.className = "vector-item";
+            vectorElement.innerHTML = `<span class="token">"${token}"</span> <span class="arrow">→</span> <span class="vector">[${vector.join(', ')}]</span>`;
+            vectorOutputDiv.appendChild(vectorElement);
+          });
+        }
+      }
+
       // Keep console logging for debugging
       console.clear();
       console.log("Sentences:");
       sentences.forEach((s, i) => {
         console.log(`${i + 1}:`, s);
       });
+
+      if (text.trim()) {
+        console.log("\nFeature Vectors:");
+        const vectors = textToNumbers(text);
+        vectors.forEach(({ token, vector }) => {
+          console.log(`"${token}" →`, vector);
+        });
+      }
     });
   </script>
 </body>
