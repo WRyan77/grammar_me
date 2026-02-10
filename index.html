@@ -3,37 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <title>MVP Word Processor</title>
-  
-
-    body {
   <style>
-    <button id="analyzeBtn">Analyze Text</button>
-    <script>
-  const editor = document.getElementById("editor");
-  const analyzeBtn = document.getElementById("analyzeBtn");
-
-  analyzeBtn.addEventListener("click", () => {
-    const text = editor.value;
-
-    // Very simple sentence split (good enough for MVP)
-    const sentences = text
-      .split(/([.!?])/)
-      .reduce((acc, part, index, arr) => {
-        if (/[.!?]/.test(part)) {
-          acc[acc.length - 1] += part;
-        } else if (part.trim()) {
-          acc.push(part.trim());
-        }
-        return acc;
-      }, []);
-
-    console.clear();
-    console.log("Sentences:");
-    sentences.forEach((s, i) => {
-      console.log(`${i + 1}:`, s);
-    });
-  });
-</script>
+    body {
       margin: 20px;
       font-family: system-ui, sans-serif;
     }
@@ -46,11 +17,44 @@
       padding: 10px;
       box-sizing: border-box;
     }
+
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
-
   <textarea id="editor" placeholder="Start typing here..."></textarea>
+  <button id="analyzeBtn">Analyze Text</button>
 
+  <script>
+    const editor = document.getElementById("editor");
+    const analyzeBtn = document.getElementById("analyzeBtn");
+
+    analyzeBtn.addEventListener("click", () => {
+      const text = editor.value;
+
+      // Very simple sentence split (good enough for MVP)
+      const sentences = text
+        .split(/([.!?])/)
+        .reduce((acc, part, index, arr) => {
+          if (/[.!?]/.test(part)) {
+            acc[acc.length - 1] += part;
+          } else if (part.trim()) {
+            acc.push(part.trim());
+          }
+          return acc;
+        }, []);
+
+      console.clear();
+      console.log("Sentences:");
+      sentences.forEach((s, i) => {
+        console.log(`${i + 1}:`, s);
+      });
+    });
+  </script>
 </body>
 </html>
