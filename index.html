@@ -24,15 +24,47 @@
       font-size: 16px;
       cursor: pointer;
     }
+
+    #results {
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 15px;
+      background-color: #f9f9f9;
+    }
+
+    #results h3 {
+      margin-top: 0;
+      color: #333;
+    }
+
+    .sentence-item {
+      margin-bottom: 10px;
+      padding: 8px;
+      background-color: white;
+      border-left: 3px solid #4CAF50;
+      border-radius: 3px;
+    }
+
+    .sentence-item strong {
+      color: #4CAF50;
+      margin-right: 8px;
+    }
   </style>
 </head>
 <body>
   <textarea id="editor" placeholder="Start typing here..."></textarea>
   <button id="analyzeBtn">Analyze Text</button>
 
+  <div id="results" style="margin-top: 20px; display: none;">
+    <h3>Analysis Results</h3>
+    <div id="output"></div>
+  </div>
+
   <script>
     const editor = document.getElementById("editor");
     const analyzeBtn = document.getElementById("analyzeBtn");
+    const resultsDiv = document.getElementById("results");
+    const outputDiv = document.getElementById("output");
 
     analyzeBtn.addEventListener("click", () => {
       const text = editor.value;
@@ -49,6 +81,25 @@
           return acc;
         }, []);
 
+      // Show results container
+      resultsDiv.style.display = "block";
+
+      // Clear previous output
+      outputDiv.innerHTML = "";
+
+      // Display each sentence in the output div
+      if (sentences.length === 0) {
+        outputDiv.innerHTML = "<p>No sentences found. Please enter some text.</p>";
+      } else {
+        sentences.forEach((s, i) => {
+          const sentenceElement = document.createElement("div");
+          sentenceElement.className = "sentence-item";
+          sentenceElement.innerHTML = `<strong>${i + 1}:</strong> ${s}`;
+          outputDiv.appendChild(sentenceElement);
+        });
+      }
+
+      // Keep console logging for debugging
       console.clear();
       console.log("Sentences:");
       sentences.forEach((s, i) => {
