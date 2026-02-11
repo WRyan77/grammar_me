@@ -108,7 +108,8 @@
     <div id="grammar-analysis" style="margin-top: 20px;">
       <h4>Grammar Feature Vectors</h4>
       <div class="vector-legend">
-        Format: [wordClass, tense, capitalization, suffix, punctuation, length]
+        Format: [wordClass, tense, capitalization, suffix, punctuation, length]<br>
+        WordClass: 0=noun, 1=pronoun, 2=verb, 3=adverb, 4=adjective, 5=article, 6=auxiliary, 7=preposition, 8=conjunction, 9=wh-word, 10=punctuation
       </div>
       <div id="vector-output"></div>
     </div>
@@ -123,12 +124,32 @@
      * @returns {Array<{token: string, vector: Array<number>}>} Array of objects with tokens and their numeric vectors
      */
     function textToNumbers(text) {
+      // ========================================================================
+      // CANONICAL WORD CLASS ENUM - DO NOT CHANGE
+      // This frozen enum is the single source of truth for all word classification
+      // ========================================================================
+      const WordClass = Object.freeze({
+        NOUN: 0,           // Common and proper nouns
+        PRONOUN: 1,        // Personal, demonstrative (she, he, this, that) - NOT wh-words
+        VERB: 2,           // Main verbs only (eat, run, walk) - NOT auxiliaries
+        ADVERB: 3,         // Manner, time, place (quickly, now, here)
+        ADJECTIVE: 4,      // Descriptive words (happy, big, good)
+        ARTICLE: 5,        // the, a, an
+        AUXILIARY: 6,      // be, have, do forms + modals (is, was, can, should)
+        PREPOSITION: 7,    // in, on, at, to, for
+        CONJUNCTION: 8,    // and, but, or, because, if (NOT wh-words)
+        WH_WORD: 9,        // Question words (what, why, how, when, where, who, which)
+        PUNCTUATION: 10    // All punctuation marks
+      });
+
       // Enhanced word class dictionary using Map for O(1) lookup
       const wordClassMap = new Map([
-        // Pronouns (1)
+        // Pronouns (1) - Personal and demonstrative only
+        // WHY: WH-words (who, whom, whose, which) are NOT pronouns for grammar purposes
+        // They signal questions and require separate detection
         ['she', 1], ['he', 1], ['i', 1], ['we', 1], ['they', 1], ['you', 1], ['it', 1],
         ['them', 1], ['us', 1], ['me', 1], ['him', 1], ['her', 1], ['this', 1], ['that', 1],
-        ['these', 1], ['those', 1], ['who', 1], ['whom', 1], ['whose', 1], ['which', 1],
+        ['these', 1], ['those', 1],
 
         // Verbs (2)
         ['eat', 2], ['eats', 2], ['ate', 2], ['eaten', 2], ['eating', 2],
@@ -186,10 +207,6 @@
         ['stop', 2], ['stops', 2], ['stopped', 2], ['stopping', 2],
         ['create', 2], ['creates', 2], ['created', 2], ['creating', 2],
         ['speak', 2], ['speaks', 2], ['spoke', 2], ['spoken', 2], ['speaking', 2],
-        ['is', 2], ['am', 2], ['are', 2], ['was', 2], ['were', 2], ['be', 2], ['been', 2], ['being', 2],
-        ['have', 2], ['has', 2], ['had', 2], ['having', 2],
-        ['do', 2], ['does', 2], ['did', 2], ['done', 2], ['doing', 2],
-        ['will', 2], ['would', 2], ['could', 2], ['should', 2], ['can', 2], ['may', 2], ['might', 2], ['must', 2],
         ['go', 2], ['goes', 2], ['went', 2], ['gone', 2], ['going', 2],
         ['come', 2], ['comes', 2], ['came', 2], ['coming', 2],
         ['want', 2], ['wants', 2], ['wanted', 2], ['wanting', 2],
@@ -227,6 +244,16 @@
         // Articles (5)
         ['the', 5], ['a', 5], ['an', 5],
 
+        // Auxiliaries (6) - be, have, do forms + modals
+        // WHY: Passive voice detection requires "was" (AUX) + "eaten" (VERB-past-participle)
+        // Cannot detect if both are classified as generic "verb"
+        ['be', 6], ['am', 6], ['is', 6], ['are', 6], ['was', 6], ['were', 6], ['been', 6], ['being', 6],
+        ['have', 6], ['has', 6], ['had', 6], ['having', 6],
+        ['do', 6], ['does', 6], ['did', 6], ['done', 6], ['doing', 6],
+        // Modals
+        ['will', 6], ['would', 6], ['shall', 6], ['should', 6],
+        ['can', 6], ['could', 6], ['may', 6], ['might', 6], ['must', 6],
+
         // Prepositions (7)
         ['in', 7], ['on', 7], ['at', 7], ['to', 7], ['for', 7], ['with', 7],
         ['from', 7], ['by', 7], ['about', 7], ['as', 7], ['into', 7], ['like', 7],
@@ -234,10 +261,16 @@
         ['during', 7], ['before', 7], ['up', 7], ['down', 7], ['out', 7], ['off', 7],
         ['of', 7], ['against', 7], ['within', 7], ['without', 7],
 
-        // Conjunctions (8)
+        // Conjunctions (8) - NOT including wh-words
         ['and', 8], ['but', 8], ['or', 8], ['because', 8], ['if', 8],
-        ['when', 8], ['while', 8], ['although', 8], ['since', 8], ['so', 8],
-        ['unless', 8], ['until', 8], ['whether', 8], ['nor', 8], ['yet', 8]
+        ['while', 8], ['although', 8], ['since', 8], ['so', 8],
+        ['unless', 8], ['until', 8], ['whether', 8], ['nor', 8], ['yet', 8],
+
+        // WH-words (9) - Question words
+        // WHY: Questions require detecting "What is..." pattern (WH-word + auxiliary)
+        // Cannot detect if "what" is misclassified as pronoun or "when" as conjunction
+        ['how', 9], ['what', 9], ['why', 9], ['when', 9], ['where', 9],
+        ['who', 9], ['whom', 9], ['whose', 9], ['which', 9]
       ]);
 
       // Comprehensive suffix lists (ordered by length for accurate matching)
@@ -291,45 +324,93 @@
 
       // Helper: Get word class
       function getWordClass(word) {
+        // CRITICAL: Check if punctuation FIRST before any other processing
+        // WHY: Prevents punctuation from being misclassified as unknown/other
+        if (punctuationMap.has(word)) {
+          return WordClass.PUNCTUATION; // 10
+        }
+
         const lower = word.toLowerCase();
 
-        // Check dictionary first
+        // Check dictionary
         if (wordClassMap.has(lower)) {
           return wordClassMap.get(lower);
         }
 
         // Guess based on suffix heuristics
-        if (lower.endsWith('ly') && lower.length > 2) return 3; // adverb
-        if (lower.endsWith('ing') || lower.endsWith('ed') || lower.endsWith('en')) return 2; // verb
-        if (lower.endsWith('tion') || lower.endsWith('ment') || lower.endsWith('ness') || lower.endsWith('ity')) return 0; // noun
-        if (lower.endsWith('ful') || lower.endsWith('less') || lower.endsWith('ous') || lower.endsWith('ive') || lower.endsWith('able')) return 4; // adjective
+        if (lower.endsWith('ly') && lower.length > 2) return WordClass.ADVERB; // 3
+        if (lower.endsWith('ing') || lower.endsWith('ed') || lower.endsWith('en')) return WordClass.VERB; // 2
+        if (lower.endsWith('tion') || lower.endsWith('ment') || lower.endsWith('ness') || lower.endsWith('ity')) return WordClass.NOUN; // 0
+        if (lower.endsWith('ful') || lower.endsWith('less') || lower.endsWith('ous') || lower.endsWith('ive') || lower.endsWith('able')) return WordClass.ADJECTIVE; // 4
 
-        // Check if it's likely a proper noun (capitalized and not at sentence start would be better, but this is MVP)
-        if (word[0] === word[0].toUpperCase() && word.length > 1 && word !== word.toUpperCase()) return 0; // proper noun
+        // Check if it's likely a proper noun
+        if (word[0] === word[0].toUpperCase() && word.length > 1 && word !== word.toUpperCase()) {
+          return WordClass.NOUN; // 0
+        }
 
-        return 6; // unknown/other
+        // DEFAULT: Unknown alphabetic words are treated as NOUNS
+        // WHY: Grammar rules depend on structure, not vocabulary completeness.
+        // Unknown word "blorgify" in "The cat will blorgify" should participate in subject-verb patterns.
+        return WordClass.NOUN; // 0, NOT 6 (unknown removed from enum)
       }
 
       // Helper: Detect tense/number
       function getTenseNumber(word, wordClass) {
         const lower = word.toLowerCase();
 
-        // For verbs
-        if (wordClass === 2) {
+        // For AUXILIARY verbs (6)
+        // WHY: Passive voice detection requires distinguishing "was" (AUX-past) from "is" (AUX-present)
+        // and "been" (past-participle) from "being" (present-participle)
+        if (wordClass === WordClass.AUXILIARY) {
+          // Modals (special tense marker)
+          if (['can', 'could', 'may', 'might', 'must', 'shall', 'should', 'will', 'would'].includes(lower)) {
+            return 4; // modal marker
+          }
+
+          // Past forms
+          if (['was', 'were', 'had', 'did'].includes(lower)) {
+            return 2; // past
+          }
+
+          // Past participles
+          if (['been', 'done'].includes(lower)) {
+            return 3; // past participle
+          }
+
+          // Present participles (being, having, doing)
+          if (lower.endsWith('ing')) {
+            return 3; // present participle
+          }
+
+          // 3rd person singular present (is, has, does)
+          if (['is', 'has', 'does'].includes(lower)) {
+            return 1; // 3rd person singular
+          }
+
+          return 0; // base form (be, have, do, are, am)
+        }
+
+        // For main VERBS (2)
+        if (wordClass === WordClass.VERB) {
           if (lower.endsWith('ing')) return 3; // present participle
           if (lower.endsWith('ed')) return 2; // past tense
-          if (lower.endsWith('en')) return 3; // past participle
+          if (lower.endsWith('en')) return 3; // past participle (eaten, taken, seen)
           if (lower.endsWith('s') || lower.endsWith('es')) return 1; // 3rd person singular
           return 0; // base form
         }
 
-        // For nouns
-        if (wordClass === 0) {
+        // For NOUNS (0)
+        if (wordClass === WordClass.NOUN) {
           if (lower.endsWith('s') || lower.endsWith('es')) return 1; // plural
           return 0; // singular
         }
 
-        return 0; // default
+        // For PUNCTUATION (10) - no tense/number
+        if (wordClass === WordClass.PUNCTUATION) {
+          return 0;
+        }
+
+        return 0; // default for other word classes
       }
 
       // Helper: Detect capitalization
@@ -355,10 +436,28 @@
       // Convert each token into numeric vector with metadata
       const results = tokens.map(token => {
         const wordClass = getWordClass(token);
+
+        // CRITICAL: Punctuation gets special handling with clean vectors
+        // WHY: A period should not have tense, capitalization, or suffix data
+        if (wordClass === WordClass.PUNCTUATION) {
+          return {
+            token: token,
+            vector: [
+              WordClass.PUNCTUATION,  // wordClass = 10
+              0,                       // no tense/number
+              0,                       // no capitalization
+              0,                       // no suffix
+              getPunctuation(token),   // punctuation code (1-16)
+              getLengthBucket(token)   // length bucket
+            ]
+          };
+        }
+
+        // Regular tokens (words)
         const tenseNumber = getTenseNumber(token, wordClass);
         const capitalization = getCapitalization(token);
         const suffixType = getSuffixType(token);
-        const punctuation = getPunctuation(token);
+        const punctuation = 0; // words have no punctuation code
         const lengthBucket = getLengthBucket(token);
 
         return {
